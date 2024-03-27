@@ -1,12 +1,33 @@
 package com.example.gratitudejar
 
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.widget.CalendarView
+import android.widget.ImageButton
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.annotation.RequiresApi
 import androidx.appcompat.view.ContextThemeWrapper
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -37,7 +58,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -55,6 +78,16 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
+import androidx.compose.runtime.ExperimentalComposeApi
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.TextUnit
+import androidx.navigation.NavController
 
 class MainActivity : ComponentActivity() {
     @RequiresApi(Build.VERSION_CODES.O)
@@ -72,13 +105,16 @@ class MainActivity : ComponentActivity() {
                 }
                 composable("screen2") {
                     GratitudeJarScreen2(onLocationSelected = {
-                        navController.navigate("screen3")
+                        navController.navigate("screen4")
                     }, onHomeClick = { navController.navigate("screen1")})
                 }
                 composable("screen3") {
                     GratitudeJarScreen3(onSubmitGratitude = {
-                        // Handle submission of gratitude
+                        navController.navigate("screen1")
                     }, onHomeClick = { navController.navigate("screen1")})
+                }
+                composable("screen4") {
+                    GratitudeJarScreen4(onHomeClick = { navController.navigate("screen1")})
                 }
             }
         }
@@ -94,7 +130,7 @@ fun GratitudeJarScreen1(onAddGratitudeClick: () -> Unit, onHomeClick: () -> Unit
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Header()
+            Header(dark = true)
             Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
             WelcomeMessage()
             Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
@@ -107,7 +143,7 @@ fun GratitudeJarScreen1(onAddGratitudeClick: () -> Unit, onHomeClick: () -> Unit
             ShakeIcon()
             SurpriseText()
             Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the bottom half
-            Footer(onHomeClick = onHomeClick)
+            Footer(onHomeClick = onHomeClick, dark = true)
         }
     }
 }
@@ -125,11 +161,11 @@ fun GratitudeJarScreen2(onLocationSelected: () -> Unit, onHomeClick: () -> Unit)
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Header()
+            Header(dark = true)
             Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
             GMaps(onLocationSelected = onLocationSelected)
             Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
-            Footer(onHomeClick = onHomeClick)
+            Footer(onHomeClick = onHomeClick, dark = true)
         }
     }
 }
@@ -148,11 +184,11 @@ fun GratitudeJarScreen3(onSubmitGratitude: () -> Unit, onHomeClick: () -> Unit) 
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Header()
+            Header(dark = true)
             Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
             Text(
-                text = "Enter your gratitude message",
-                style = MaterialTheme.typography.titleMedium,
+                text = "What are you grateful for here?",
+                style = MaterialTheme.typography.headlineLarge,
                 color = MaterialTheme.colorScheme.onPrimary
             )
             Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
@@ -181,19 +217,125 @@ fun GratitudeJarScreen3(onSubmitGratitude: () -> Unit, onHomeClick: () -> Unit) 
                 Text(text = "Submit gratitude")
             }
             Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
-            Footer(onHomeClick = onHomeClick)
+            Footer(onHomeClick = onHomeClick, dark = true)
+        }
+    }
+}
+
+// Screen 4
+@Composable
+fun GratitudeJarScreen4(onHomeClick: () -> Unit) {
+    var showCardWithMap by remember { mutableStateOf(false) }
+
+    // Define animation values
+    val jarRotation by animateFloatAsState(
+        targetValue = if (showCardWithMap) 45f else 0f,
+        animationSpec = tween(durationMillis = 1500)
+    )
+
+    // Animatable for pulsation scale
+    val pulseScale = remember { Animatable(initialValue = 1f) }
+
+    // Start pulsation animation
+    LaunchedEffect(Unit) {
+        if (!showCardWithMap) {
+            pulseScale.animateTo(
+                targetValue = 1.5f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                )
+            )
+        }
+    }
+
+    // Use LaunchedEffect to delay showing the card
+    LaunchedEffect(Unit) {
+        delay(1500) // Wait for 1.5 seconds before showing the card
+        showCardWithMap = true
+    }
+
+    Surface(color = Color.White) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Header(dark = false)
+            Spacer(modifier = Modifier.weight(0.05f))
+
+            // Animate the jar
+            Image(
+                painter = painterResource(id = R.drawable.jar_foreground),
+                contentDescription = "Jar",
+                modifier = Modifier
+                    .size(150.dp)
+                    .graphicsLayer(rotationZ = jarRotation, scaleX = pulseScale.value, scaleY = pulseScale.value)
+            )
+
+            // Conditionally show the card with map
+            if (showCardWithMap) {
+                CardWithMap()
+                LaunchedEffect(Unit) {
+                    pulseScale.stop()
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(0.05f))
+            Footer(onHomeClick = onHomeClick, dark = false)
         }
     }
 }
 
 
+
+
 @Composable
-fun Header() {
+fun CardWithMap() {
+    Surface(
+        color = MaterialTheme.colorScheme.onSecondaryContainer,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(42.dp,42.dp)
+        ) {
+            // Add GMaps preview here
+            
+            // Gratitude Date
+            Text(
+                text = "On July 12, 2024", // You can display the actual date here
+                style = MaterialTheme.typography.displayMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                modifier = Modifier.padding(bottom = 20.dp)
+            )
+            // Gratitude Message
+            Text(
+                text = "I feel grateful for the meeting I had with a Walmart greeter today. He was very kind. He said I resembled his granddaughter and offered me a candy.", // You can display the actual message here
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                modifier = Modifier.padding(bottom = 11.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun Header( dark: Boolean) {
+    var color = Color.Unspecified
+    if (dark) {
+        color = Color.White
+    }
+    else {
+        color = Color.Black
+    }
     Text(
         text = "Gratitude Jar",
         style = MaterialTheme.typography.bodyLarge,
         fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.background
+        color = color
     )
 }
 
@@ -225,13 +367,13 @@ fun RoundedChip(text: String) {
     Surface(
         shape = RoundedCornerShape(30.dp),
         color = MaterialTheme.colorScheme.surfaceTint, // Change the color here
-        modifier = Modifier.size(200.dp, 100.dp),
+        modifier = Modifier.size(180.dp, 100.dp),
     ) {
         Text(
             text = text,
             color = MaterialTheme.colorScheme.onPrimary,
-            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 25.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 50.sp),
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            style = MaterialTheme.typography.titleLarge.copy(fontSize = 27.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 29.sp, textAlign = TextAlign.Left),
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
         )
     }
 }
@@ -260,26 +402,33 @@ fun AddGratitudeButton(onClick: () -> Unit) {
 fun ShakeIcon() {
     Icon(imageVector = ImageVector.vectorResource(id = R.drawable.shake),
         contentDescription = null,
-        modifier = Modifier.size(48.dp),
+        modifier = Modifier.size(70.dp),
         tint = Color.Yellow)
 }
 
 @Composable
 fun SurpriseText() {
     Text(
-        text = "Shake for a surprise gratitude boost",
+        text = "\nShake for a surprise gratitude boost",
         color = Color.Yellow,
         fontStyle = FontStyle.Italic
     )
 }
 
 @Composable
-fun Footer(onHomeClick: () -> Unit) {
+fun Footer(onHomeClick: () -> Unit, dark: Boolean) {
+    var color = Color.Unspecified
+    if (dark) {
+        color = Color.White
+    }
+    else {
+        color = Color.Black
+    }
     IconButton(onClick = onHomeClick) {
         Icon(
             imageVector = ImageVector.vectorResource(id = R.drawable.home), // Provide your home icon resource here
             contentDescription = "Home",
-            tint = MaterialTheme.colorScheme.onPrimary
+            tint = color
         )
     }
 }
@@ -451,4 +600,11 @@ fun GratitudeJarScreen2Preview() {
 @Composable
 fun GratitudeJarScreen3Preview() {
     GratitudeJarScreen3(onSubmitGratitude = {}, onHomeClick = {})
+}
+
+// Preview for Screen 4
+@Preview(showBackground = true)
+@Composable
+fun GratitudeJarScreen4Preview() {
+    GratitudeJarScreen4(onHomeClick = {})
 }
