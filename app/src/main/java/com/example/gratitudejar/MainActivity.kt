@@ -85,14 +85,22 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.ExperimentalComposeApi
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.navigation.NavController
+import java.util.Calendar
+
 
 class MainActivity : ComponentActivity() {
+    private lateinit var sensorManager: SensorManager
+    private var accelerometer: Sensor? = null
+    private var lastUpdate: Long = 0
+    private val shakeThreshold = 800
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         setContent {
             val navController = rememberNavController()
             NavHost(navController = navController, startDestination = "screen1") {
@@ -105,7 +113,7 @@ class MainActivity : ComponentActivity() {
                 }
                 composable("screen2") {
                     GratitudeJarScreen2(onLocationSelected = {
-                        navController.navigate("screen4")
+                        navController.navigate("screen3")
                     }, onHomeClick = { navController.navigate("screen1")})
                 }
                 composable("screen3") {
@@ -170,12 +178,35 @@ fun GratitudeJarScreen2(onLocationSelected: () -> Unit, onHomeClick: () -> Unit)
     }
 }
 
-// Screen 3
-@RequiresApi(Build.VERSION_CODES.O)
+@Composable
+fun ShowDatePicker(onDateSelected: (Long) -> Unit) {
+    var selectedDate by remember { mutableStateOf(System.currentTimeMillis()) }
+
+    Surface(
+        color = MaterialTheme.colorScheme.surface, // Set your desired color here
+        modifier = Modifier.wrapContentWidth()
+    ) {
+        AndroidView(
+            factory = { context ->
+                CalendarView(context).apply {
+                    setOnDateChangeListener { _, year, month, dayOfMonth ->
+                        val calendar = Calendar.getInstance()
+                        calendar.set(Calendar.YEAR, year)
+                        calendar.set(Calendar.MONTH, month)
+                        calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                        selectedDate = calendar.timeInMillis
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
 
 @Composable
 fun GratitudeJarScreen3(onSubmitGratitude: () -> Unit, onHomeClick: () -> Unit) {
     var gratitudeMessage by remember { mutableStateOf(TextFieldValue()) }
+    var selectedDate by remember { mutableStateOf(System.currentTimeMillis()) }
 
     Surface(color = Color.Black) {
         Column(
@@ -185,14 +216,15 @@ fun GratitudeJarScreen3(onSubmitGratitude: () -> Unit, onHomeClick: () -> Unit) 
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Header(dark = true)
-            Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
+            Spacer(modifier = Modifier.weight(0.05f))
+
             Text(
                 text = "What are you grateful for here?",
                 style = MaterialTheme.typography.headlineLarge,
                 color = MaterialTheme.colorScheme.onPrimary
             )
-            Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
-            // Add input box with character limit of 2000
+            Spacer(modifier = Modifier.weight(0.05f))
+
             OutlinedTextField(
                 value = gratitudeMessage,
                 onValueChange = { newValue ->
@@ -201,22 +233,35 @@ fun GratitudeJarScreen3(onSubmitGratitude: () -> Unit, onHomeClick: () -> Unit) 
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("I am grateful for...") },
+                label = { Text("Gratitude Message") },
+                placeholder = { Text("I am grateful for...") },
                 maxLines = 3,
                 textStyle = LocalTextStyle.current.copy(color = MaterialTheme.colorScheme.onPrimary)
             )
 
-            Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
-            // Add date-time picker
-            ShowDatePicker()
-            Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
+            Spacer(modifier = Modifier.weight(0.05f))
+
+            ShowDatePicker { date ->
+                selectedDate = date
+            }
+
+            Spacer(modifier = Modifier.weight(0.05f))
+
             Button(
                 onClick = onSubmitGratitude,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(text = "Submit gratitude")
+                Text(
+                    text = "Submit gratitude",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = 25.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                )
             }
-            Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
+
+            Spacer(modifier = Modifier.weight(0.05f))
+
             Footer(onHomeClick = onHomeClick, dark = true)
         }
     }
@@ -271,7 +316,11 @@ fun GratitudeJarScreen4(onHomeClick: () -> Unit) {
                 contentDescription = "Jar",
                 modifier = Modifier
                     .size(150.dp)
-                    .graphicsLayer(rotationZ = jarRotation, scaleX = pulseScale.value, scaleY = pulseScale.value)
+                    .graphicsLayer(
+                        rotationZ = jarRotation,
+                        scaleX = pulseScale.value,
+                        scaleY = pulseScale.value
+                    )
             )
 
             // Conditionally show the card with map
@@ -343,7 +392,8 @@ fun Header( dark: Boolean) {
 fun WelcomeMessage() {
     Text(
         text = "Welcome to Gratitude Jar!",
-        style = MaterialTheme.typography.bodyLarge,
+        style = MaterialTheme.typography.headlineLarge,
+        fontFamily = FontFamily.Monospace,
         fontSize = 50.sp,
         fontWeight = FontWeight.Bold,
         lineHeight = 70.sp,
@@ -357,24 +407,44 @@ fun GratitudeAndReminderChips() {
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         // get counts from database
-        RoundedChip(text = "24\nGratitudes")
-        RoundedChip(text = "3\nReminders")
+        RoundedChip(number = "24", text="Gratitudes")
+        RoundedChip(number = "3", text="Reminders")
     }
 }
 
 @Composable
-fun RoundedChip(text: String) {
+fun RoundedChip(number: String, text: String) {
     Surface(
         shape = RoundedCornerShape(30.dp),
         color = MaterialTheme.colorScheme.surfaceTint, // Change the color here
-        modifier = Modifier.size(180.dp, 100.dp),
+        modifier = Modifier.size(200.dp, 150.dp),
     ) {
-        Text(
-            text = text,
-            color = MaterialTheme.colorScheme.onPrimary,
-            style = MaterialTheme.typography.titleLarge.copy(fontSize = 27.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 29.sp, textAlign = TextAlign.Left),
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
-        )
+        Column(
+            modifier = Modifier.padding(15.dp,15.dp)
+        ) {
+            Text(
+                text = number,
+                color = MaterialTheme.colorScheme.onPrimary,
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontSize = 60.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    lineHeight = 2.sp,
+                    textAlign = TextAlign.Left
+                ),
+//                modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
+            )
+            Text(
+                text = text,
+                color = MaterialTheme.colorScheme.onPrimary,
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontSize = 25.sp,
+                    fontWeight = FontWeight.Bold,
+                    lineHeight = 29.sp,
+                    textAlign = TextAlign.Left
+                ),
+//                modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp)
+            )
+        }
     }
 }
 
@@ -382,8 +452,11 @@ fun RoundedChip(text: String) {
 fun GratitudePrompt() {
     Text(
         text = "What are you grateful for today?",
-        style = MaterialTheme.typography.titleMedium,
-        color = MaterialTheme.colorScheme.inverseOnSurface
+        style = MaterialTheme.typography.titleMedium.copy(
+            fontSize = 15.sp,
+            fontFamily = FontFamily.Monospace
+        ),
+        color = MaterialTheme.colorScheme.inverseOnSurface,
     )
 
 }
@@ -394,7 +467,13 @@ fun AddGratitudeButton(onClick: () -> Unit) {
         onClick = onClick,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Text(text = "Add a gratitude")
+        Text(
+            text = "Add a gratitude",
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontSize = 25.sp,
+                fontWeight = FontWeight.Bold
+            )
+        )
     }
 }
 
@@ -410,8 +489,12 @@ fun ShakeIcon() {
 fun SurpriseText() {
     Text(
         text = "\nShake for a surprise gratitude boost",
-        color = Color.Yellow,
-        fontStyle = FontStyle.Italic
+        style = MaterialTheme.typography.titleMedium.copy(
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            fontStyle = FontStyle.Italic
+        ),
+        color = Color.Yellow
     )
 }
 
@@ -445,140 +528,15 @@ fun GMaps(onLocationSelected: () -> Unit) {
         onClick = onLocationSelected,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Text(text = "Select Location")
-    }
-}
-
-@RequiresApi(Build.VERSION_CODES.O)
-@Composable
-fun ShowDatePicker() {
-    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
-
-    Surface(
-        color = MaterialTheme.colorScheme.surface, // Set your desired color here
-        modifier = Modifier.wrapContentWidth()
-    ) {
-        AndroidView(
-            factory = { context ->
-                CalendarView(context).apply {
-                    setOnDateChangeListener { _, year, month, dayOfMonth ->
-                        selectedDate = LocalDate.of(year, month + 1, dayOfMonth)
-                    }
-                }
-            },
-            modifier = Modifier.fillMaxWidth()
+        Text(
+            text = "Select Location",
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontSize = 25.sp,
+                fontWeight = FontWeight.Bold
+            )
         )
     }
 }
-
-
-//@RequiresApi(Build.VERSION_CODES.O)
-//@Composable
-//fun DatePicker(onDismissRequest: () -> Unit) {
-//    val selDate = remember { mutableStateOf(LocalDate.now()) }
-//
-//    //todo - add strings to resource after POC
-//    Dialog(onDismissRequest = { onDismissRequest() }, properties = DialogProperties()) {
-//        Column(
-//            modifier = Modifier
-//                .wrapContentSize()
-//                .background(
-//                    color = MaterialTheme.colorScheme.surface,
-//                    shape = RoundedCornerShape(size = 16.dp)
-//                )
-//        ) {
-//            Column(
-//                Modifier
-//                    .defaultMinSize(minHeight = 72.dp)
-//                    .fillMaxWidth()
-//                    .background(
-//                        color = MaterialTheme.colorScheme.primary,
-//                        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
-//                    )
-//                    .padding(16.dp)
-//            ) {
-//                Text(
-//                    text = "Select date".toUpperCase(Locale.current),
-//                    style = MaterialTheme.typography.titleMedium,
-//                    color = MaterialTheme.colorScheme.onPrimary
-//                )
-//
-//                Spacer(modifier = Modifier.size(24.dp))
-//
-//                Text(
-//                    text = selDate.value.format(DateTimeFormatter.ofPattern("dd-mm-yyyy")),
-//                    style = MaterialTheme.typography.headlineLarge,
-//                    color = MaterialTheme.colorScheme.onPrimary
-//                )
-//
-//                Spacer(modifier = Modifier.size(16.dp))
-//            }
-//
-////            CustomCalendarView(onDateSelected = {
-////                selDate.value = it
-////            })
-//
-//            Spacer(modifier = Modifier.size(8.dp))
-//
-//            Row(
-//                modifier = Modifier
-//                    .align(Alignment.End)
-//                    .padding(bottom = 16.dp, end = 16.dp)
-//            ) {
-//                TextButton(
-//                    onClick = onDismissRequest
-//                ) {
-//                    //TODO - hardcode string
-//                    Text(
-//                        text = "Cancel",
-//                        style = MaterialTheme.typography.labelMedium,
-//                        color = MaterialTheme.colorScheme.onPrimary
-//                    )
-//                }
-//
-//                TextButton(
-//                    onClick = {
-//                        onDismissRequest()
-//                    }
-//                ) {
-//                    //TODO - hardcode string
-//                    Text(
-//                        text = "OK",
-//                        style = MaterialTheme.typography.labelMedium,
-//                        color = MaterialTheme.colorScheme.onPrimary
-//                    )
-//                }
-//
-//            }
-//        }
-//    }
-//}
-
-//@RequiresApi(Build.VERSION_CODES.O)
-//@Composable
-//fun CustomCalendarView(onDateSelected: (LocalDate) -> Unit) {
-//    // Adds view to Compose
-//    AndroidView(
-//        modifier = Modifier.wrapContentSize(),
-//        factory = { context ->
-//            CalendarView(ContextThemeWrapper(context, R.style.CalenderViewCustom))
-//        },
-//        update = { view ->
-//            view.minDate = Long.MIN_VALUE
-//            view.maxDate = Long.MAX_VALUE
-//
-//            view.setOnDateChangeListener { _, year, month, dayOfMonth ->
-//                onDateSelected(
-//                    LocalDate
-//                        .now()
-//                        .withMonth(month + 1)
-//                        .withYear(year)
-//                        .withDayOfMonth(dayOfMonth)
-//                )
-//            }
-//        }
-//    )
-//}
 
 // Preview for Screen 1
 @Preview(showBackground = true)
