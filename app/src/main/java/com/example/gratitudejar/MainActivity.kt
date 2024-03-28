@@ -7,38 +7,27 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Build
 import android.os.Bundle
-import android.os.VibrationEffect
-import android.os.Vibrator
+import android.util.Log
 import android.widget.CalendarView
-import android.widget.ImageButton
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.annotation.RequiresApi
-import androidx.appcompat.view.ContextThemeWrapper
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.updateTransition
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -49,8 +38,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,50 +51,48 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.intl.Locale
-import androidx.compose.ui.text.toUpperCase
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import androidx.navigation.NavController
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.offset
-import androidx.compose.runtime.ExperimentalComposeApi
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.TextUnit
-import androidx.navigation.NavController
 import java.util.Calendar
 
 
-class MainActivity : ComponentActivity() {
+class MainActivity : ComponentActivity(), SensorEventListener {
+    private val viewModel: ShakeDetectionViewModel by viewModels()
     private lateinit var sensorManager: SensorManager
     private var accelerometer: Sensor? = null
     private var lastUpdate: Long = 0
-    private val shakeThreshold = 800
+    private val shakeThreshold = 10
+    private lateinit var navController: NavController
+    private var screen4Opened = false // Flag to track if screen 4 has been opened
+
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Initialize sensor manager and accelerometer sensor
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL)
+
+
         setContent {
-            val navController = rememberNavController()
-            NavHost(navController = navController, startDestination = "screen1") {
+            navController = rememberNavController()
+            NavHost(navController = navController as NavHostController, startDestination = "screen1") {
                 composable("screen1") {
-                    GratitudeJarScreen1(onAddGratitudeClick = {
+                    GratitudeJarScreen1(viewModel = viewModel, onAddGratitudeClick = {
                         navController.navigate("screen2")
                     }, onHomeClick = {
                         navController.navigate("screen1")
@@ -122,36 +109,80 @@ class MainActivity : ComponentActivity() {
                     }, onHomeClick = { navController.navigate("screen1")})
                 }
                 composable("screen4") {
-                    GratitudeJarScreen4(onHomeClick = { navController.navigate("screen1")})
+                    GratitudeJarScreen4(viewModel = viewModel, onHomeClick = {
+                            navController.navigate("screen1")
+                    })
                 }
             }
         }
     }
+    // SensorEventListener methods
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
+            val currentTime = System.currentTimeMillis()
+
+            if ((currentTime - lastUpdate) > shakeThreshold) {
+                val x = event.values[0]
+                val y = event.values[1]
+                val z = event.values[2]
+
+                val acceleration = Math.sqrt((x * x + y * y + z * z).toDouble()).toFloat()
+                if (acceleration > shakeThreshold && !screen4Opened) {
+                    // Set shake detected flag in ViewModel
+                    viewModel.shakeDetected = true
+                    Log.d("ShakeDetection", "Shake detected!")
+                    navController.navigate("screen4")
+                    screen4Opened = true
+                }
+
+                lastUpdate = currentTime
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Register the sensor listener onResume
+        sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Unregister the sensor listener onPause to avoid battery drain
+        sensorManager.unregisterListener(this)
+    }
 }
 
 @Composable
-fun GratitudeJarScreen1(onAddGratitudeClick: () -> Unit, onHomeClick: () -> Unit) {
-    Surface(color = Color.Black) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Header(dark = true)
-            Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
-            WelcomeMessage()
-            Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
-            GratitudeAndReminderChips()
-            Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
-            GratitudePrompt()
-            Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
-            AddGratitudeButton(onClick = onAddGratitudeClick)
-            Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
-            ShakeIcon()
-            SurpriseText()
-            Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the bottom half
-            Footer(onHomeClick = onHomeClick, dark = true)
+fun GratitudeJarScreen1(viewModel: ShakeDetectionViewModel, onAddGratitudeClick: () -> Unit, onHomeClick: () -> Unit) {
+    if (viewModel.shakeDetected) {
+        viewModel.shakeDetected = false
+    }
+    else {
+        Surface(color = Color.Black) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Header(dark = true)
+                Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
+                WelcomeMessage()
+                Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
+                GratitudeAndReminderChips()
+                Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
+                GratitudePrompt()
+                Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
+                AddGratitudeButton(onClick = onAddGratitudeClick)
+                Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the top half
+                ShakeIcon()
+                SurpriseText()
+                Spacer(modifier = Modifier.weight(0.05f)) // Pushes content to the bottom half
+                Footer(onHomeClick = onHomeClick, dark = true)
+            }
         }
     }
 }
@@ -269,7 +300,12 @@ fun GratitudeJarScreen3(onSubmitGratitude: () -> Unit, onHomeClick: () -> Unit) 
 
 // Screen 4
 @Composable
-fun GratitudeJarScreen4(onHomeClick: () -> Unit) {
+fun GratitudeJarScreen4(viewModel: ShakeDetectionViewModel, onHomeClick: () -> Unit) {
+
+    if (viewModel.shakeDetected) {
+        viewModel.shakeDetected = false
+    }
+
     var showCardWithMap by remember { mutableStateOf(false) }
 
     // Define animation values
@@ -336,9 +372,6 @@ fun GratitudeJarScreen4(onHomeClick: () -> Unit) {
         }
     }
 }
-
-
-
 
 @Composable
 fun CardWithMap() {
@@ -542,7 +575,7 @@ fun GMaps(onLocationSelected: () -> Unit) {
 @Preview(showBackground = true)
 @Composable
 fun GratitudeJarScreen1Preview() {
-    GratitudeJarScreen1(onAddGratitudeClick = {}, onHomeClick = {})
+    GratitudeJarScreen1(viewModel = ShakeDetectionViewModel(), onAddGratitudeClick = {}, onHomeClick = {})
 }
 
 // Preview for Screen 2
@@ -564,5 +597,5 @@ fun GratitudeJarScreen3Preview() {
 @Preview(showBackground = true)
 @Composable
 fun GratitudeJarScreen4Preview() {
-    GratitudeJarScreen4(onHomeClick = {})
+    GratitudeJarScreen4(viewModel = ShakeDetectionViewModel(), onHomeClick = {})
 }
