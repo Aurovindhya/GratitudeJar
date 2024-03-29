@@ -111,6 +111,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 composable("screen4") {
                     GratitudeJarScreen4(viewModel = viewModel, onHomeClick = {
                             navController.navigate("screen1")
+                            screen4Opened = false
                     })
                 }
             }
@@ -120,25 +121,35 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
     override fun onSensorChanged(event: SensorEvent?) {
-        if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
-            val currentTime = System.currentTimeMillis()
+        // Check if navController is initialized
+        if (::navController.isInitialized) {
+            val currentRoute = navController.currentDestination?.route
+            Log.d("CurrentRoute", "Current Route: $currentRoute")
 
-            if ((currentTime - lastUpdate) > shakeThreshold) {
-                val x = event.values[0]
-                val y = event.values[1]
-                val z = event.values[2]
+            if (currentRoute == "screen1") {
+                if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
+                    val currentTime = System.currentTimeMillis()
 
-                val acceleration = Math.sqrt((x * x + y * y + z * z).toDouble()).toFloat()
-                if (acceleration > shakeThreshold && !screen4Opened) {
-                    // Set shake detected flag in ViewModel
-                    viewModel.shakeDetected = true
-                    Log.d("ShakeDetection", "Shake detected!")
-                    navController.navigate("screen4")
-                    screen4Opened = true
+                    if ((currentTime - lastUpdate) > shakeThreshold) {
+                        val x = event.values[0]
+                        val y = event.values[1]
+                        val z = event.values[2]
+
+                        val acceleration = Math.sqrt((x * x + y * y + z * z).toDouble()).toFloat()
+                        if (acceleration > shakeThreshold && !screen4Opened) {
+                            // Set shake detected flag in ViewModel
+                            viewModel.shakeDetected = true
+                            Log.d("ShakeDetection", "Shake detected!")
+                            navController.navigate("screen4")
+                            screen4Opened = true
+                        }
+
+                        lastUpdate = currentTime
+                    }
                 }
-
-                lastUpdate = currentTime
             }
+        } else {
+            Log.e("NavController", "NavController is not initialized yet")
         }
     }
 
