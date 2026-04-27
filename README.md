@@ -49,13 +49,4 @@ MAPS_API_KEY=your_key_here
 
 4. Open in Android Studio and run on a device or emulator
 
-
-## Roadmap
-
-- [ ] Mood tagging on entries
-- [ ] Weekly and monthly recap summaries
-- [ ] Widget for home screen quick-entry
-- [ ] Offline-first with background sync
-- [ ] Share a gratitude note as an image
-
 Copyright (c) 2026 Aurovindhya
